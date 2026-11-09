@@ -7,12 +7,15 @@ import android.os.Bundle;
 import android.content.Intent;
 import android.net.Uri;
 import android.speech.tts.TextToSpeech;
-import android.view.View;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.view.Gravity;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
-import android.graphics.Typeface;
+
 import java.util.Locale;
 
 public class MainActivity extends Activity {
@@ -20,6 +23,9 @@ public class MainActivity extends Activity {
     private TextToSpeech speaker;
     private EditText messageInput;
     private TextView chatOutput;
+
+    private int blue = Color.rgb(25, 65, 125);
+    private int white = Color.WHITE;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -31,82 +37,142 @@ public class MainActivity extends Activity {
             }
         });
 
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(24, 32, 24, 24);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(Color.rgb(242, 246, 252));
 
-        TextView title = new TextView(this);
-        title.setText("ASHWANI AI");
-        title.setTextSize(28);
-        title.setTypeface(null, Typeface.BOLD);
-        layout.addView(title);
+        TextView header = new TextView(this);
+        header.setText("ASHWANI AI");
+        header.setTextSize(26);
+        header.setTextColor(white);
+        header.setTypeface(null, Typeface.BOLD);
+        header.setGravity(Gravity.CENTER);
+        header.setPadding(16, 24, 16, 24);
+        header.setBackgroundColor(blue);
+        root.addView(header);
 
-        TextView subtitle = new TextView(this);
-        subtitle.setText("आपका Personal AI Assistant");
-        subtitle.setTextSize(16);
-        layout.addView(subtitle);
+        ScrollView scroll = new ScrollView(this);
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(20, 20, 20, 20);
+
+        TextView welcome = new TextView(this);
+        welcome.setText("नमस्ते! मैं Ashwani AI हूँ।\nआपका Personal AI Assistant");
+        welcome.setTextSize(21);
+        welcome.setTextColor(Color.rgb(30, 45, 70));
+        welcome.setPadding(0, 10, 0, 24);
+        content.addView(welcome);
+
+        TextView chatTitle = new TextView(this);
+        chatTitle.setText("AI CHAT");
+        chatTitle.setTextSize(18);
+        chatTitle.setTypeface(null, Typeface.BOLD);
+        chatTitle.setTextColor(blue);
+        content.addView(chatTitle);
 
         chatOutput = new TextView(this);
-        chatOutput.setText("\nनमस्ते! मैं Ashwani AI हूँ।\nआप क्या करना चाहते हैं?");
-        chatOutput.setTextSize(18);
-        layout.addView(chatOutput);
+        chatOutput.setText("Ashwani AI: नमस्ते! आज मैं आपकी क्या मदद करूँ?");
+        chatOutput.setTextSize(17);
+        chatOutput.setTextColor(Color.DKGRAY);
+        chatOutput.setPadding(12, 18, 12, 18);
+        content.addView(chatOutput);
 
         messageInput = new EditText(this);
         messageInput.setHint("यहाँ अपना संदेश लिखें...");
-        layout.addView(messageInput);
+        messageInput.setTextSize(16);
+        content.addView(messageInput);
 
-        Button sendButton = new Button(this);
-        sendButton.setText("Send Message");
-        layout.addView(sendButton);
+        Button send = makeButton("Send Message");
+        content.addView(send);
 
-        sendButton.setOnClickListener(v -> {
+        send.setOnClickListener(v -> {
             String message = messageInput.getText().toString().trim();
 
-            if (!message.isEmpty()) {
-                chatOutput.setText("आपका संदेश:\n" + message
-                    + "\n\nAI सर्वर अभी कनेक्ट नहीं है।");
+            if (message.isEmpty()) {
+                messageInput.setError("संदेश लिखें");
+                return;
+            }
+
+            chatOutput.setText("आप: " + message
+                    + "\n\nAshwani AI: AI Backend अभी कनेक्ट नहीं है।");
+
+            if (speaker != null) {
                 speaker.speak(
                     "आपका संदेश मिल गया। AI सर्वर अभी कनेक्ट नहीं है।",
                     TextToSpeech.QUEUE_FLUSH,
                     null,
-                    "chat_reply"
+                    "reply"
                 );
-                messageInput.setText("");
             }
+
+            messageInput.setText("");
         });
 
-        Button researchButton = new Button(this);
-        researchButton.setText("Internet Research");
-        layout.addView(researchButton);
+        Button research = makeButton("Internet Research");
+        content.addView(research);
 
-        researchButton.setOnClickListener(v -> {
+        research.setOnClickListener(v -> {
             String query = messageInput.getText().toString().trim();
 
             if (query.isEmpty()) {
-                messageInput.setText("आज की ताजा खबरें");
-            } else {
-                Intent intent = new Intent(
-                    Intent.ACTION_VIEW,
-                    Uri.parse("https://www.google.com/search?q="
-                        + Uri.encode(query))
-                );
-                startActivity(intent);
+                messageInput.setError("पहले खोजने के लिए विषय लिखें");
+                return;
             }
+
+            Intent intent = new Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://www.google.com/search?q="
+                    + Uri.encode(query))
+            );
+
+            startActivity(intent);
         });
 
-        Button plannerButton = new Button(this);
-        plannerButton.setText("My Planner");
-        layout.addView(plannerButton);
+        Button planner = makeButton("My Planner");
+        content.addView(planner);
 
-        plannerButton.setOnClickListener(v -> {
+        planner.setOnClickListener(v -> {
+            EditText task = new EditText(this);
+            task.setHint("अपना काम लिखें");
+
             new AlertDialog.Builder(this)
                 .setTitle("My Planner")
-                .setMessage("अपना काम और पढ़ाई की योजना बनाएँ।")
-                .setPositiveButton("OK", null)
+                .setMessage("आज का काम")
+                .setView(task)
+                .setPositiveButton("Save", (dialog, which) -> {
+                    String value = task.getText().toString().trim();
+
+                    if (!value.isEmpty()) {
+                        new AlertDialog.Builder(this)
+                            .setTitle("Task Saved")
+                            .setMessage(value)
+                            .setPositiveButton("OK", null)
+                            .show();
+                    }
+                })
+                .setNegativeButton("Cancel", null)
                 .show();
         });
 
-        setContentView(layout);
+        TextView footer = new TextView(this);
+        footer.setText("\nAshwani AI | Version 1.0");
+        footer.setGravity(Gravity.CENTER);
+        footer.setTextColor(Color.GRAY);
+        content.addView(footer);
+
+        scroll.addView(content);
+        root.addView(scroll);
+
+        setContentView(root);
+    }
+
+    private Button makeButton(String text) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setTextSize(15);
+        button.setAllCaps(false);
+        return button;
     }
 
     @Override
@@ -117,4 +183,5 @@ public class MainActivity extends Activity {
         }
         super.onDestroy();
     }
-    }
+}
+
