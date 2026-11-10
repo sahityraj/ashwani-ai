@@ -253,57 +253,6 @@ private boolean ttsReady = false;
 
     private void sendMessage() 
 
-    String reply = handleLocalCommand(message);
-
-    if (reply == null) {
-        reply = "यह सवाल AI Backend को भेजने के लिए तैयार है, "
-                + "लेकिन असली AI सेवा अभी कनेक्ट नहीं है। "
-                + "अभी मैं समय, तारीख़ और ऐप के स्थानीय फीचर संभाल सकता हूँ।";
-    }
-
-    String history = prefs.getString("chat_history", "");
-
-    history += "\n\nआप: " + message
-            + "\nAshwani AI: " + reply;
-
-    if (history.length() > 12000) {
-        history = history.substring(history.length() - 12000);
-    }
-
-    prefs.edit().putString("chat_history", history).apply();
-
-    lastAssistantReply = reply;
-
-    messageInput.setText("");
-    hideKeyboard();
-    showChat();
-
-    // जवाब अपने-आप आवाज़ में सुनाओ
-    if (ttsReady) {
-        speakLastMessage();
-    }
-    }
-
-        String reply = handleLocalCommand(message);
-        if (reply == null) {
-            reply = "यह सवाल AI Backend को भेजने के लिए तैयार है, "
-                    + "लेकिन असली AI सेवा अभी कनेक्ट नहीं है। "
-                    + "अभी मैं समय, तारीख़ और ऐप के स्थानीय फीचर संभाल सकता हूँ।";
-        }
-
-        String history = prefs.getString("chat_history", "");
-        history += "\n\nआप: " + message + "\nAshwani AI: " + reply;
-        if (history.length() > 12000) {
-            history = history.substring(history.length() - 12000);
-        }
-        prefs.edit().putString("chat_history", history).apply();
-
-        lastAssistantReply = reply;
-        messageInput.setText("");
-        hideKeyboard();
-        showChat();
-    }
-
     private String handleLocalCommand(String message) {
         String q = message.toLowerCase(Locale.ROOT);
 
@@ -337,7 +286,46 @@ private boolean ttsReady = false;
                 .setMessage("क्या पुरानी चैट मिटानी है?")
                 .setNegativeButton("नहीं", null)
                 .setPositiveButton("हाँ", (d, w) -> {
-                    prefs.edit().remove("chat_history").apply();
+                    prefs.edit().remove("chat_history").applprivate void sendMessage() {
+    if (messageInput == null) return;
+
+    String message = messageInput.getText().toString().trim();
+
+    if (message.isEmpty()) {
+        toast("पहले सवाल लिखें।");
+        return;
+    }
+
+    String reply = handleLocalCommand(message);
+
+    if (reply == null) {
+        reply = "यह सवाल AI Backend को भेजने के लिए तैयार है, "
+                + "लेकिन असली AI सेवा अभी कनेक्ट नहीं है। "
+                + "अभी मैं समय, तारीख़ और ऐप के स्थानीय फीचर संभाल सकता हूँ।";
+    }
+
+    String history = prefs.getString("chat_history", "");
+
+    history += "\n\nआप: " + message
+            + "\nAshwani AI: " + reply;
+
+    if (history.length() > 12000) {
+        history = history.substring(history.length() - 12000);
+    }
+
+    prefs.edit().putString("chat_history", history).apply();
+
+    lastAssistantReply = reply;
+
+    messageInput.setText("");
+    hideKeyboard();
+    showChat();
+
+    // जवाब अपने-आप आवाज़ में सुनाओ
+    if (ttsReady) {
+        speakLastMessage();
+    }
+                }y();
                     lastAssistantReply = "";
                     showChat();
                 })
