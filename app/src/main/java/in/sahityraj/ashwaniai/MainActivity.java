@@ -538,7 +538,6 @@ public class MainActivity extends Activity {
                 .setView(input)
                 .setNegativeButton("रद्द", null)
                 .setPositiveButton("अगला", (d, w) -> {
-                    String title = i
                     String title = input.getText().toString().trim();
                     if (title.isEmpty()) {
                         toast("काम का नाम लिखें।");
