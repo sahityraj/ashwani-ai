@@ -251,15 +251,7 @@ private boolean ttsReady = false;
         chatArea.addView(bubble, params);
     }
 
-    private void sendMessage() {
-    if (messageInput == null) return;
-
-    String message = messageInput.getText().toString().trim();
-
-    if (message.isEmpty()) {
-        toast("पहले सवाल लिखें।");
-        return;
-    }
+    private void sendMessage() 
 
     String reply = handleLocalCommand(message);
 
