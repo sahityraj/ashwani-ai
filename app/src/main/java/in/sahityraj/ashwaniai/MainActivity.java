@@ -1,11 +1,13 @@
 package in.sahityraj.ashwaniai;
 
+import android.Manifest;
 import android.app.Activity;
+import android.app.AlarmManager;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
-import android.app.TimePickerDialog;
-import android.app.AlarmManager;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.app.TimePickerDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -13,11 +15,14 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
 import android.view.Gravity;
 import android.view.View;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -35,41 +40,54 @@ import java.util.Locale;
 
 public class MainActivity extends Activity {
 
-    private LinearLayout root, content, chatArea;
-    private EditText messageInput;
-    private TextView statusText;
-    private SharedPreferences prefs;
-    private TextToSpeech tts;
-
     private static final int VOICE_REQUEST = 101;
     private static final int DOCUMENT_REQUEST = 102;
+    private static final int NOTIFICATION_PERMISSION_REQUEST = 200;
+    private static final String PREFS = "AshwaniAI";
     private static final String REMINDER_ACTION =
             "in.sahityraj.ashwaniai.REMINDER";
 
+    private SharedPreferences prefs;
+    private LinearLayout root;
+    private LinearLayout content;
+    private LinearLayout chatArea;
+    private EditText messageInput;
+    private TextToSpeech tts;
+
     private String language = "hi";
     private JSONArray tasks = new JSONArray();
+    private JSONArray notes = new JSONArray();
+    private String lastAssistantReply = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        prefs = getSharedPreferences("AshwaniAI", MODE_PRIVATE);
+        prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         language = prefs.getString("language", "hi");
+        tasks = readArray("tasks");
+        notes = readArray("notes");
 
-        try {
-            tasks = new JSONArray(prefs.getString("tasks", "[]"));
-        } catch (Exception e) {
-            tasks = new JSONArray();
-        }
-
-        tts = new TextToSpeech(this, result -> {
-            if (result == TextToSpeech.SUCCESS) {
+        tts = new TextToSpeech(this, status -> {
+            if (status == TextToSpeech.SUCCESS) {
                 setTtsLanguage();
             }
         });
 
         requestNotificationPermission();
         showHome();
+    }
+
+    private JSONArray readArray(String key) {
+        try {
+            return new JSONArray(prefs.getString(key, "[]"));
+        } catch (Exception e) {
+            return new JSONArray();
+        }
+    }
+
+    private void saveArray(String key, JSONArray array) {
+        prefs.edit().putString(key, array.toString()).apply();
     }
 
     private int dp(int value) {
@@ -80,7 +98,7 @@ public class MainActivity extends Activity {
         TextView text = new TextView(this);
         text.setText(value);
         text.setTextSize(size);
-        text.setTextColor(0xFF202A44);
+        text.setTextColor(0xFFE8EEFF);
         text.setPadding(dp(12), dp(10), dp(12), dp(10));
         return text;
     }
@@ -89,79 +107,105 @@ public class MainActivity extends Activity {
         Button button = new Button(this);
         button.setText(value);
         button.setAllCaps(false);
+        button.setTextColor(0xFFFFFFFF);
+        button.setBackgroundTintList(
+                android.content.res.ColorStateList.valueOf(0xFF2563EB));
         button.setOnClickListener(v -> action.run());
         return button;
+    }
+
+    private EditText makeInput(String hint, int lines) {
+        EditText input = new EditText(this);
+        input.setHint(hint);
+        input.setTextColor(0xFFFFFFFF);
+        input.setHintTextColor(0xFF9AA9C7);
+        input.setTextSize(16);
+        input.setMinLines(lines);
+        input.setPadding(dp(12), dp(10), dp(12), dp(10));
+        input.setBackgroundTintList(
+                android.content.res.ColorStateList.valueOf(0xFF60A5FA));
+        return input;
     }
 
     private void setupPage(String title) {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(0xFFF4F6FB);
+        root.setBackgroundColor(0xFF0B1220);
 
-        TextView header = makeText("ASHWANI AI", 24);
-        header.setTextColor(0xFFFFFFFF);
+        TextView header = makeText("✦ ASHWANI AI", 23);
         header.setGravity(Gravity.CENTER);
-        header.setBackgroundColor(0xFF172554);
-        root.addView(header, new LinearLayout.LayoutParams(
-                -1, dp(64)));
+        header.setTextColor(0xFFFFFFFF);
+        header.setBackgroundColor(0xFF111F3A);
+        root.addView(header, new LinearLayout.LayoutParams(-1, dp(62)));
 
-        statusText = makeText(title, 17);
-        statusText.setGravity(Gravity.CENTER);
-        root.addView(statusText);
+        TextView subtitle = makeText(title, 16);
+        subtitle.setGravity(Gravity.CENTER);
+        subtitle.setTextColor(0xFF93C5FD);
+        root.addView(subtitle);
 
         ScrollView scroll = new ScrollView(this);
         content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(12), dp(8), dp(12), dp(16));
+        content.setPadding(dp(12), dp(8), dp(12), dp(18));
         scroll.addView(content);
 
-        root.addView(scroll, new LinearLayout.LayoutParams(
-                -1, 0, 1));
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
         LinearLayout nav = new LinearLayout(this);
         nav.setGravity(Gravity.CENTER);
-        nav.setBackgroundColor(0xFFE0E7FF);
+        nav.setBackgroundColor(0xFF111F3A);
 
-        nav.addView(makeButton("Home", this::showHome),
-                new LinearLayout.LayoutParams(0, dp(55), 1));
-        nav.addView(makeButton("Chat", this::showChat),
-                new LinearLayout.LayoutParams(0, dp(55), 1));
-        nav.addView(makeButton("Planner", this::showPlanner),
-                new LinearLayout.LayoutParams(0, dp(55), 1));
-        nav.addView(makeButton("Settings", this::showSettings),
-                new LinearLayout.LayoutParams(0, dp(55), 1));
+        addNavButton(nav, "Home", this::showHome);
+        addNavButton(nav, "Chat", this::showChat);
+        addNavButton(nav, "Notes", this::showNotes);
+        addNavButton(nav, "Planner", this::showPlanner);
+        addNavButton(nav, "Settings", this::showSettings);
 
-        root.addView(nav);
+        root.addView(nav, new LinearLayout.LayoutParams(-1, dp(58)));
         setContentView(root);
     }
 
+    private void addNavButton(LinearLayout nav, String label, Runnable action) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setTextSize(11);
+        button.setAllCaps(false);
+        button.setTextColor(0xFFE8EEFF);
+        button.setBackgroundTintList(
+                android.content.res.ColorStateList.valueOf(0xFF1E3A66));
+        button.setOnClickListener(v -> action.run());
+        nav.addView(button, new LinearLayout.LayoutParams(0, dp(52), 1));
+    }
+
+    private void addCardText(String value, int size) {
+        TextView text = makeText(value, size);
+        text.setBackgroundTintList(null);
+        text.setBackgroundColor(0xFF16243B);
+        LinearLayout.LayoutParams params =
+                new LinearLayout.LayoutParams(-1, -2);
+        params.setMargins(0, dp(5), 0, dp(5));
+        content.addView(text, params);
+    }
+
     private void showHome() {
-        setupPage("आपका व्यक्तिगत AI सहायक");
+        setupPage("आपका व्यक्तिगत सहायक");
 
-        content.addView(makeText(
-                "नमस्ते! मैं Ashwani AI हूँ।", 22));
+        addCardText("नमस्ते! मैं Ashwani AI हूँ।", 22);
+        addCardText("आपके काम, नोट्स और रिमाइंडर एक जगह।", 16);
 
-        content.addView(makeText(
-                "आपके सहायक में उपलब्ध सुविधाएँ:", 17));
+        content.addView(makeButton("✦ AI Chat खोलें", this::showChat));
+        content.addView(makeButton("🎙 बोलकर सवाल पूछें", this::startVoiceInput));
+        content.addView(makeButton("📝 Notes खोलें", this::showNotes));
+        content.addView(makeButton("📅 Planner और Reminders", this::showPlanner));
+        content.addView(makeButton("📄 PDF / Document खोलें", this::openDocument));
+        content.addView(makeButton("🌐 Internet Search", this::internetResearch));
 
-        content.addView(makeButton("AI Chat खोलें",
-                this::showChat));
+        addCardText("Backend स्थिति: AI सेवा अभी कनेक्ट नहीं है। "
+                + "स्थानीय Notes, Planner और डिवाइस Voice सुविधाएँ उपलब्ध हैं।", 14);
 
-        content.addView(makeButton("Planner और Reminders",
-                this::showPlanner));
-
-        content.addView(makeButton("PDF / Document खोलें",
-                this::openDocument));
-
-        content.addView(makeButton("Internet Research",
-                this::internetResearch));
-
-        content.addView(makeButton("बोलकर सवाल पूछें",
-                this::startVoiceInput));
-
-        content.addView(makeText(
-                "नोट: AI उत्तर देने की सुविधा Backend कनेक्शन के बाद चालू होगी।",
-                14));
+        String date = new SimpleDateFormat("EEEE, dd MMMM yyyy",
+                Locale.getDefault()).format(new Date());
+        addCardText("आज: " + date, 14);
     }
 
     private void showChat() {
@@ -173,389 +217,325 @@ public class MainActivity extends Activity {
 
         String history = prefs.getString("chat_history", "");
         if (!history.isEmpty()) {
-            TextView oldChat = makeText(history, 15);
-            oldChat.setBackgroundColor(0xFFFFFFFF);
+            TextView oldChat = makeText(history, 14);
+            oldChat.setBackgroundColor(0xFF16243B);
             chatArea.addView(oldChat);
+        } else {
+            addChatBubble("Ashwani AI", "नमस्ते! अपना सवाल लिखें या बोलें।");
         }
 
-        messageInput = new EditText(this);
-        messageInput.setHint("अपना सवाल यहाँ लिखें...");
-        messageInput.setMinLines(2);
-        messageInput.setTextSize(16);
+        messageInput = makeInput("अपना सवाल यहाँ लिखें...", 2);
         content.addView(messageInput);
-
         content.addView(makeButton("Send", this::sendMessage));
-        content.addView(makeButton("Voice Input",
-                this::startVoiceInput));
-        content.addView(makeButton("संदेश सुनें",
-                this::speakLastMessage));
-        content.addView(makeButton("Chat History मिटाएँ",
-                this::clearChat));
+        content.addView(makeButton("🎙 Voice Input", this::startVoiceInput));
+        content.addView(makeButton("🔊 पिछला जवाब सुनें", this::speakLastMessage));
+        content.addView(makeButton("Chat History मिटाएँ", this::clearChat));
+    }
+
+    private void addChatBubble(String speaker, String message) {
+        TextView bubble = makeText(speaker + ":\n" + message, 15);
+        bubble.setBackgroundColor(speaker.equals("आप")
+                ? 0xFF1E3A66 : 0xFF16243B);
+        LinearLayout.LayoutParams params =
+                new LinearLayout.LayoutParams(-1, -2);
+        params.setMargins(0, dp(4), 0, dp(4));
+        chatArea.addView(bubble, params);
     }
 
     private void sendMessage() {
         if (messageInput == null) return;
 
         String message = messageInput.getText().toString().trim();
-
         if (message.isEmpty()) {
-            Toast.makeText(this, "पहले सवाल लिखें",
-                    Toast.LENGTH_SHORT).show();
+            toast("पहले सवाल लिखें।");
             return;
         }
 
-        String history = prefs.getString("chat_history", "");
-        history += "\n\nआप: " + message;
-        history += "\nAshwani AI: Backend अभी कनेक्ट नहीं है।";
+        String reply = handleLocalCommand(message);
+        if (reply == null) {
+            reply = "यह सवाल AI Backend को भेजने के लिए तैयार है, "
+                    + "लेकिन असली AI सेवा अभी कनेक्ट नहीं है। "
+                    + "अभी मैं समय, तारीख़ और ऐप के स्थानीय फीचर संभाल सकता हूँ।";
+        }
 
+        String history = prefs.getString("chat_history", "");
+        history += "\n\nआप: " + message + "\nAshwani AI: " + reply;
+        if (history.length() > 12000) {
+            history = history.substring(history.length() - 12000);
+        }
         prefs.edit().putString("chat_history", history).apply();
 
+        lastAssistantReply = reply;
         messageInput.setText("");
+        hideKeyboard();
         showChat();
+    }
 
-        Toast.makeText(this,
-                "सवाल मोबाइल में सेव हो गया है।",
-                Toast.LENGTH_SHORT).show();
+    private String handleLocalCommand(String message) {
+        String q = message.toLowerCase(Locale.ROOT);
+
+        if (q.contains("time") || q.contains("समय") || q.contains("कितने बजे")) {
+            return "अभी समय है: " + new SimpleDateFormat("hh:mm a",
+                    Locale.getDefault()).format(new Date());
+        }
+
+        if (q.contains("date") || q.contains("तारीख") || q.contains("आज कौन")) {
+            return "आज की तारीख़ है: " + new SimpleDateFormat(
+                    "EEEE, dd MMMM yyyy", Locale.getDefault()).format(new Date());
+        }
+
+        if (q.contains("planner") || q.contains("काम दिखाओ")
+                || q.contains("मेरे काम")) {
+            return "Planner में " + tasks.length()
+                    + " काम सेव हैं। Planner टैब खोलें।";
+        }
+
+        if (q.contains("notes") || q.contains("नोट्स दिखाओ")) {
+            return "आपके Notes सेक्शन में " + notes.length()
+                    + " नोट्स सेव हैं। Notes टैब खोलें।";
+        }
+
+        return null;
     }
 
     private void clearChat() {
         new AlertDialog.Builder(this)
                 .setTitle("Chat History")
-                .setMessage("क्या आप पुरानी चैट मिटाना चाहते हैं?")
+                .setMessage("क्या पुरानी चैट मिटानी है?")
                 .setNegativeButton("नहीं", null)
                 .setPositiveButton("हाँ", (d, w) -> {
                     prefs.edit().remove("chat_history").apply();
+                    lastAssistantReply = "";
                     showChat();
                 })
                 .show();
     }
 
     private void startVoiceInput() {
-        Intent intent = new Intent(
-                RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-
-        intent.putExtra(
-                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-
-        intent.putExtra(
-                RecognizerIntent.EXTRA_LANGUAGE,
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE,
                 language.equals("hi") ? "hi-IN" : "en-IN");
-
-        intent.putExtra(
-                RecognizerIntent.EXTRA_PROMPT,
-                "बोलकर अपना सवाल पूछें");
+        intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "अपना सवाल बोलें");
 
         try {
             startActivityForResult(intent, VOICE_REQUEST);
         } catch (Exception e) {
-            Toast.makeText(this,
-                    "Voice recognition उपलब्ध नहीं है।",
-                    Toast.LENGTH_LONG).show();
+            toast("Voice recognition सेवा इस डिवाइस पर उपलब्ध नहीं है।");
         }
     }
 
     private void speakLastMessage() {
-        String history = prefs.getString("chat_history", "");
-
-        if (history.isEmpty()) {
-            Toast.makeText(this, "अभी कोई संदेश नहीं है",
-                    Toast.LENGTH_SHORT).show();
+        String text = lastAssistantReply;
+        if (text == null || text.isEmpty()) {
+            String history = prefs.getString("chat_history", "");
+            int index = history.lastIndexOf("Ashwani AI: ");
+            if (index >= 0) {
+                text = history.substring(index + "Ashwani AI: ".length()).trim();
+            }
+        }
+        if (text == null || text.isEmpty()) {
+            toast("सुनाने के लिए कोई जवाब नहीं है।");
             return;
         }
-
-        String[] lines = history.split("\n");
-        String last = lines[lines.length - 1];
-
         if (tts != null) {
             setTtsLanguage();
-            tts.speak(last, TextToSpeech.QUEUE_FLUSH, null, "chat_voice");
+            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "ashwani_reply");
         }
     }
 
     private void setTtsLanguage() {
         if (tts == null) return;
-
         Locale locale = language.equals("hi")
-                ? new Locale("hi", "IN")
-                : new Locale("en", "IN");
-
+                ? new Locale("hi", "IN") : new Locale("en", "IN");
         int result = tts.setLanguage(locale);
-
         if (result == TextToSpeech.LANG_MISSING_DATA
                 || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-            Toast.makeText(this,
-                    "इस भाषा की आवाज़ मोबाइल में उपलब्ध नहीं है।",
-                    Toast.LENGTH_SHORT).show();
+            toast("चुनी गई भाषा का TTS voice डिवाइस में उपलब्ध नहीं है।");
         }
     }
 
+    // ---------------- NOTES ----------------
+
+    private void showNotes() {
+        setupPage("आपके निजी Notes");
+
+        content.addView(makeButton("+ नया Note बनाएँ", this::addNote));
+        addCardText("कुल Notes: " + notes.length(), 15);
+
+        if (notes.length() == 0) {
+            addCardText("अभी कोई Note सेव नहीं है।", 15);
+        }
+
+        for (int i = 0; i < notes.length(); i++) {
+            JSONObject note = notes.optJSONObject(i);
+            if (note == null) continue;
+
+            final int index = i;
+            String title = note.optString("title", "बिना शीर्षक");
+            String body = note.optString("body", "");
+            String preview = body.length() > 180
+                    ? body.substring(0, 180) + "…" : body;
+
+            TextView card = makeText("📝 " + title + "\n" + preview, 15);
+            card.setBackgroundColor(0xFF16243B);
+            card.setOnClickListener(v -> showNoteOptions(index));
+            LinearLayout.LayoutParams params =
+                    new LinearLayout.LayoutParams(-1, -2);
+            params.setMargins(0, dp(5), 0, dp(5));
+            content.addView(card, params);
+        }
+    }
+
+    private void addNote() {
+        showNoteEditor(-1);
+    }
+
+    private void showNoteOptions(int index) {
+        JSONObject note = notes.optJSONObject(index);
+        if (note == null) return;
+
+        String[] options = {"पढ़ें", "Edit करें", "Delete करें"};
+        new AlertDialog.Builder(this)
+                .setTitle(note.optString("title", "Note"))
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        new AlertDialog.Builder(this)
+                                .setTitle(note.optString("title", "Note"))
+                                .setMessage(note.optString("body", ""))
+                                .setPositiveButton("बंद करें", null)
+                                .show();
+                    } else if (which == 1) {
+                        showNoteEditor(index);
+                    } else {
+                        confirmDeleteNote(index);
+                    }
+                }).show();
+    }
+
+    private void showNoteEditor(int editIndex) {
+        JSONObject old = editIndex >= 0 ? notes.optJSONObject(editIndex) : null;
+        EditText titleInput = makeInput("Note का शीर्षक", 1);
+        EditText bodyInput = makeInput("यहाँ अपना Note लिखें...", 5);
+
+        if (old != null) {
+            titleInput.setText(old.optString("title", ""));
+            bodyInput.setText(old.optString("body", ""));
+        }
+
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.addView(titleInput);
+        form.addView(bodyInput);
+
+        new AlertDialog.Builder(this)
+                .setTitle(editIndex >= 0 ? "Note Edit करें" : "नया Note")
+                .setView(form)
+                .setNegativeButton("रद्द", null)
+                .setPositiveButton("Save", (d, w) -> {
+                    String title = titleInput.getText().toString().trim();
+                    String body = bodyInput.getText().toString().trim();
+                    if (title.isEmpty() || body.isEmpty()) {
+                        toast("शीर्षक और Note दोनों लिखें।");
+                        return;
+                    }
+                    try {
+                        JSONObject item = new JSONObject();
+                        item.put("title", title);
+                        item.put("body", body);
+                        item.put("updated", System.currentTimeMillis());
+
+                        if (editIndex >= 0) {
+                            notes.put(editIndex, item);
+                        } else {
+                            notes.put(item);
+                        }
+                        saveArray("notes", notes);
+                        showNotes();
+                        toast("Note सेव हो गया।");
+                    } catch (Exception e) {
+                        toast("Note सेव नहीं हो सका।");
+                    }
+                }).show();
+    }
+
+    private void confirmDeleteNote(int index) {
+        new AlertDialog.Builder(this)
+                .setMessage("क्या यह Note हटाना है?")
+                .setNegativeButton("नहीं", null)
+                .setPositiveButton("हटाएँ", (d, w) -> {
+                    notes = removeArrayItem(notes, index);
+                    saveArray("notes", notes);
+                    showNotes();
+                }).show();
+    }
+
+    // ---------------- PLANNER ----------------
+
     private void showPlanner() {
-        setupPage("आपका Planner");
+        setupPage("Planner और Reminders");
 
-        content.addView(makeText(
-                "अपने काम और रिमाइंडर यहाँ सेव करें।", 17));
+        content.addView(makeButton("+ नया काम जोड़ें", this::addTask));
+        addCardText("कुल काम: " + tasks.length(), 15);
 
-        content.addView(makeButton("नया काम जोड़ें",
-                this::addTask));
-
-        content.addView(makeText("आपके सेव किए गए काम:", 18));
+        if (tasks.length() == 0) {
+            addCardText("अभी कोई काम नहीं है।", 15);
+        }
 
         for (int i = 0; i < tasks.length(); i++) {
             JSONObject task = tasks.optJSONObject(i);
             if (task == null) continue;
 
+            final int index = i;
             String title = task.optString("title", "काम");
             long time = task.optLong("time", 0);
+            boolean done = task.optBoolean("done", false);
 
-            String display = title;
-            if (time > 0) {
-                display += "\n" + new SimpleDateFormat(
-                        "dd-MM-yyyy hh:mm a",
-                        Locale.getDefault()).format(new Date(time));
-            }
+            String when = time > 0
+                    ? new SimpleDateFormat("dd-MM-yyyy hh:mm a",
+                    Locale.getDefault()).format(new Date(time))
+                    : "समय तय नहीं";
 
-            content.addView(makeText("• " + display, 16));
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.setPadding(dp(8), dp(5), dp(8), dp(5));
+            row.setBackgroundColor(0xFF16243B);
+
+            CheckBox check = new CheckBox(this);
+            check.setText(title);
+            check.setTextColor(0xFFFFFFFF);
+            check.setTextSize(16);
+            check.setChecked(done);
+            check.setOnCheckedChangeListener((button, checked) -> {
+                JSONObject current = tasks.optJSONObject(index);
+                if (current != null) {
+                    try {
+                        current.put("done", checked);
+                        saveArray("tasks", tasks);
+                    } catch (Exception ignored) { }
+                }
+            });
+
+            TextView date = makeText(when, 13);
+            row.addView(check);
+            row.addView(date);
+            row.addView(makeButton("Edit / Delete", () -> showTaskOptions(index)));
+
+            LinearLayout.LayoutParams params =
+                    new LinearLayout.LayoutParams(-1, -2);
+            params.setMargins(0, dp(5), 0, dp(5));
+            content.addView(row, params);
         }
 
-        content.addView(makeButton("सभी काम मिटाएँ", () -> {
-            new AlertDialog.Builder(this)
-                    .setMessage("क्या सभी काम मिटाने हैं?")
-                    .setNegativeButton("नहीं", null)
-                    .setPositiveButton("हाँ", (d, w) -> {
-                        tasks = new JSONArray();
-                        saveTasks();
-                        showPlanner();
-                    }).show();
-        }));
+        content.addView(makeButton("सभी काम मिटाएँ", this::clearTasks));
     }
 
     private void addTask() {
-        EditText input = new EditText(this);
-        input.setHint("काम का नाम लिखें");
-
+        EditText input = makeInput("काम का नाम लिखें", 1);
         new AlertDialog.Builder(this)
                 .setTitle("नया काम")
                 .setView(input)
-                .setNegativeButton("रद्द करें", null)
+                .setNegativeButton("रद्द", null)
                 .setPositiveButton("अगला", (d, w) -> {
-                    String title = input.getText().toString().trim();
-
-                    if (title.isEmpty()) {
-                        Toast.makeText(this, "काम का नाम लिखें",
-                                Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-
-                    chooseReminderTime(title);
-                }).show();
-    }
-
-    private void chooseReminderTime(String title) {
-        Calendar calendar = Calendar.getInstance();
-
-        new DatePickerDialog(this, (view, year, month, day) -> {
-            calendar.set(Calendar.YEAR, year);
-            calendar.set(Calendar.MONTH, month);
-            calendar.set(Calendar.DAY_OF_MONTH, day);
-
-            new TimePickerDialog(this, (timeView, hour, minute) -> {
-                calendar.set(Calendar.HOUR_OF_DAY, hour);
-                calendar.set(Calendar.MINUTE, minute);
-                calendar.set(Calendar.SECOND, 0);
-
-                long time = calendar.getTimeInMillis();
-
-                try {
-                    JSONObject task = new JSONObject();
-                    task.put("title", title);
-                    task.put("time", time);
-                    tasks.put(task);
-                    saveTasks();
-
-                    scheduleReminder(title, time);
-
-                    Toast.makeText(this, "काम सेव हो गया",
-                            Toast.LENGTH_SHORT).show();
-
-                    showPlanner();
-                } catch (Exception e) {
-                    Toast.makeText(this, "काम सेव नहीं हो सका",
-                            Toast.LENGTH_SHORT).show();
-                }
-
-            }, calendar.get(Calendar.HOUR_OF_DAY),
-                    calendar.get(Calendar.MINUTE), false).show();
-
-        }, calendar.get(Calendar.YEAR),
-                calendar.get(Calendar.MONTH),
-                calendar.get(Calendar.DAY_OF_MONTH)).show();
-    }
-
-    private void saveTasks() {
-        prefs.edit().putString("tasks", tasks.toString()).apply();
-    }
-
-    private void scheduleReminder(String title, long time) {
-        if (time <= System.currentTimeMillis()) {
-            Toast.makeText(this,
-                    "बीते हुए समय का Reminder नहीं लगाया गया।",
-                    Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        AlarmManager alarmManager =
-                (AlarmManager) getSystemService(ALARM_SERVICE);
-
-        Intent intent = new Intent(REMINDER_ACTION);
-        intent.setPackage(getPackageName());
-        intent.putExtra("title", title);
-
-        int requestCode = (int) (time % Integer.MAX_VALUE);
-
-        PendingIntent pendingIntent = PendingIntent.getBroadcast(
-                this,
-                requestCode,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT
-                        | PendingIntent.FLAG_IMMUTABLE);
-
-        if (alarmManager != null) {
-            alarmManager.setAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP,
-                    time,
-                    pendingIntent);
-        }
-    }
-
-    private void openDocument() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.setType("*/*");
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-
-        try {
-            startActivityForResult(intent, DOCUMENT_REQUEST);
-        } catch (Exception e) {
-            Toast.makeText(this,
-                    "Document picker नहीं खुल सका।",
-                    Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void internetResearch() {
-        EditText input = new EditText(this);
-        input.setHint("किस विषय पर खोजें?");
-
-        new AlertDialog.Builder(this)
-                .setTitle("Internet Research")
-                .setView(input)
-                .setNegativeButton("रद्द करें", null)
-                .setPositiveButton("Search", (d, w) -> {
-                    String query = input.getText().toString().trim();
-
-                    if (query.isEmpty()) return;
-
-                    Intent intent = new Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse("https://www.google.com/search?q="
-                                    + Uri.encode(query)));
-
-                    startActivity(intent);
-                }).show();
-    }
-
-    private void showSettings() {
-        setupPage("Settings");
-
-        content.addView(makeText("भाषा चुनें", 18));
-
-        content.addView(makeButton("हिंदी", () -> {
-            language = "hi";
-            prefs.edit().putString("language", language).apply();
-            setTtsLanguage();
-            Toast.makeText(this, "हिंदी चुनी गई",
-                    Toast.LENGTH_SHORT).show();
-        }));
-
-        content.addView(makeButton("English", () -> {
-            language = "en";
-            prefs.edit().putString("language", language).apply();
-            setTtsLanguage();
-            Toast.makeText(this, "English selected",
-                    Toast.LENGTH_SHORT).show();
-        }));
-
-        content.addView(makeText(
-                "Chat history और Planner डेटा इसी मोबाइल में सेव होते हैं।",
-                15));
-
-        content.addView(makeText(
-                "AI Backend: अभी कनेक्ट नहीं है।",
-                15));
-
-        content.addView(makeText(
-                "Voice की उपलब्धता आपके मोबाइल के Speech और TTS इंजन पर निर्भर करती है।",
-                14));
-    }
-
-    private void requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= 33
-                && checkSelfPermission(
-                "android.permission.POST_NOTIFICATIONS")
-                != PackageManager.PERMISSION_GRANTED) {
-
-            requestPermissions(
-                    new String[]{"android.permission.POST_NOTIFICATIONS"},
-                    200);
-        }
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode,
-                                    int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-
-        if (resultCode != RESULT_OK || data == null) return;
-
-        if (requestCode == VOICE_REQUEST) {
-            ArrayList<String> results =
-                    data.getStringArrayListExtra(
-                            RecognizerIntent.EXTRA_RESULTS);
-
-            if (results != null && !results.isEmpty()) {
-                showChat();
-                messageInput.setText(results.get(0));
-            }
-        }
-
-        if (requestCode == DOCUMENT_REQUEST) {
-            Uri uri = data.getData();
-
-            if (uri != null) {
-                Intent intent = new Intent(Intent.ACTION_VIEW);
-                intent.setDataAndType(uri, getContentResolver()
-                        .getType(uri));
-                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-
-                try {
-                    startActivity(intent);
-                } catch (Exception e) {
-                    Toast.makeText(this,
-                            "इस फाइल को खोलने वाला ऐप नहीं मिला।",
-                            Toast.LENGTH_LONG).show();
-                }
-            }
-        }
-    }
-
-    @Override
-    protected void onDestroy() {
-        if (tts != null) {
-            tts.stop();
-            tts.shutdown();
-        }
-        super.onDestroy();
-    }
-                    }
-
-
+                    String title = i
