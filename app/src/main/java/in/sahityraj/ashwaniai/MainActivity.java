@@ -53,7 +53,7 @@ public class MainActivity extends Activity {
     private LinearLayout chatArea;
     private EditText messageInput;
     private TextToSpeech tts;
-
+private boolean ttsReady = false;
     private String language = "hi";
     private JSONArray tasks = new JSONArray();
     private JSONArray notes = new JSONArray();
@@ -69,10 +69,19 @@ public class MainActivity extends Activity {
         notes = readArray("notes");
 
         tts = new TextToSpeech(this, status -> {
-            if (status == TextToSpeech.SUCCESS) {
-                setTtsLanguage();
-            }
-        });
+    if (status == TextToSpeech.SUCCESS) {
+        ttsReady = true;
+        setTtsLanguage();
+
+        // नया जवाब पहले से तैयार है तो उसे बोलो
+        if (!lastAssistantReply.isEmpty()) {
+            speakLastMessage();
+        }
+    } else {
+        ttsReady = false;
+        toast("Voice सेवा शुरू नहीं हो सकी।");
+    }
+});
 
         requestNotificationPermission();
         showHome();
@@ -243,13 +252,45 @@ public class MainActivity extends Activity {
     }
 
     private void sendMessage() {
-        if (messageInput == null) return;
+    if (messageInput == null) return;
 
-        String message = messageInput.getText().toString().trim();
-        if (message.isEmpty()) {
-            toast("पहले सवाल लिखें।");
-            return;
-        }
+    String message = messageInput.getText().toString().trim();
+
+    if (message.isEmpty()) {
+        toast("पहले सवाल लिखें।");
+        return;
+    }
+
+    String reply = handleLocalCommand(message);
+
+    if (reply == null) {
+        reply = "यह सवाल AI Backend को भेजने के लिए तैयार है, "
+                + "लेकिन असली AI सेवा अभी कनेक्ट नहीं है। "
+                + "अभी मैं समय, तारीख़ और ऐप के स्थानीय फीचर संभाल सकता हूँ।";
+    }
+
+    String history = prefs.getString("chat_history", "");
+
+    history += "\n\nआप: " + message
+            + "\nAshwani AI: " + reply;
+
+    if (history.length() > 12000) {
+        history = history.substring(history.length() - 12000);
+    }
+
+    prefs.edit().putString("chat_history", history).apply();
+
+    lastAssistantReply = reply;
+
+    messageInput.setText("");
+    hideKeyboard();
+    showChat();
+
+    // जवाब अपने-आप आवाज़ में सुनाओ
+    if (ttsReady) {
+        speakLastMessage();
+    }
+    }
 
         String reply = handleLocalCommand(message);
         if (reply == null) {
