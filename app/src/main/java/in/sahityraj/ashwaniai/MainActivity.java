@@ -539,3 +539,252 @@ public class MainActivity extends Activity {
                 .setNegativeButton("रद्द", null)
                 .setPositiveButton("अगला", (d, w) -> {
                     String title = i
+                    String title = input.getText().toString().trim();
+                    if (title.isEmpty()) {
+                        toast("काम का नाम लिखें।");
+                        return;
+                    }
+                    chooseReminderTime(title);
+                }).show();
+    }
+
+    private void chooseReminderTime(String title) {
+        Calendar calendar = Calendar.getInstance();
+        new DatePickerDialog(this, (view, year, month, day) -> {
+            calendar.set(Calendar.YEAR, year);
+            calendar.set(Calendar.MONTH, month);
+            calendar.set(Calendar.DAY_OF_MONTH, day);
+            new TimePickerDialog(this, (timeView, hour, minute) -> {
+                calendar.set(Calendar.HOUR_OF_DAY, hour);
+                calendar.set(Calendar.MINUTE, minute);
+                calendar.set(Calendar.SECOND, 0);
+                long time = calendar.getTimeInMillis();
+
+                if (time <= System.currentTimeMillis()) {
+                    toast("भविष्य का समय चुनें।");
+                    return;
+                }
+
+                try {
+                    JSONObject task = new JSONObject();
+                    task.put("title", title);
+                    task.put("time", time);
+                    task.put("done", false);
+                    tasks.put(task);
+                    saveArray("tasks", tasks);
+                    scheduleReminder(title, time);
+                    showPlanner();
+                    toast("काम और Reminder सेव हो गया।");
+                } catch (Exception e) {
+                    toast("काम सेव नहीं हो सका।");
+                }
+            }, calendar.get(Calendar.HOUR_OF_DAY),
+                    calendar.get(Calendar.MINUTE), false).show();
+        }, calendar.get(Calendar.YEAR),
+                calendar.get(Calendar.MONTH),
+                calendar.get(Calendar.DAY_OF_MONTH)).show();
+    }
+
+    private void scheduleReminder(String title, long time) {
+        AlarmManager manager = (AlarmManager) getSystemService(ALARM_SERVICE);
+        if (manager == null) return;
+
+        Intent intent = new Intent(REMINDER_ACTION);
+        intent.setPackage(getPackageName());
+        intent.putExtra("title", title);
+
+        int requestCode = (int) (time % Integer.MAX_VALUE);
+        PendingIntent pending = PendingIntent.getBroadcast(
+                this, requestCode, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, time, pending);
+    }
+
+    private void showTaskOptions(int index) {
+        JSONObject task = tasks.optJSONObject(index);
+        if (task == null) return;
+
+        String[] options = {"Edit करें", "Delete करें"};
+        new AlertDialog.Builder(this)
+                .setTitle(task.optString("title", "काम"))
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        EditText input = makeInput("काम का नाम", 1);
+                        input.setText(task.optString("title", ""));
+
+                        new AlertDialog.Builder(this)
+                                .setTitle("काम Edit करें")
+                                .setView(input)
+                                .setNegativeButton("रद्द", null)
+                                .setPositiveButton("Save", (d, w) -> {
+                                    String updatedTitle =
+                                            input.getText().toString().trim();
+
+                                    if (updatedTitle.isEmpty()) {
+                                        toast("काम का नाम लिखें।");
+                                        return;
+                                    }
+
+                                    try {
+                                        task.put("title", updatedTitle);
+                                        saveArray("tasks", tasks);
+                                        showPlanner();
+                                    } catch (Exception e) {
+                                        toast("बदलाव सेव नहीं हुआ।");
+                                    }
+                                }).show();
+                    } else {
+                        new AlertDialog.Builder(this)
+                                .setMessage("क्या यह काम हटाना है?")
+                                .setNegativeButton("नहीं", null)
+                                .setPositiveButton("हटाएँ", (d, w) -> {
+                                    tasks = removeArrayItem(tasks, index);
+                                    saveArray("tasks", tasks);
+                                    showPlanner();
+                                }).show();
+                    }
+                }).show();
+    }
+
+    private JSONArray removeArrayItem(JSONArray source, int removeIndex) {
+        JSONArray result = new JSONArray();
+        for (int i = 0; i < source.length(); i++) {
+            if (i == removeIndex) continue;
+            Object item = source.opt(i);
+            if (item != null) result.put(item);
+        }
+        return result;
+    }
+
+    private void clearTasks() {
+        new AlertDialog.Builder(this)
+                .setTitle("सभी काम हटाएँ?")
+                .setMessage("क्या Planner के सभी काम हटाने हैं?")
+                .setNegativeButton("रद्द", null)
+                .setPositiveButton("हटाएँ", (d, w) -> {
+                    tasks = new JSONArray();
+                    saveArray("tasks", tasks);
+                    showPlanner();
+                }).show();
+    }
+
+    private void openDocument() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.setType("*/*");
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        try {
+            startActivityForResult(intent, DOCUMENT_REQUEST);
+        } catch (Exception e) {
+            toast("Document picker नहीं खुल सका।");
+        }
+    }
+
+    private void internetResearch() {
+        EditText input = makeInput("किस विषय पर खोजें?", 1);
+        new AlertDialog.Builder(this)
+                .setTitle("Internet Search")
+                .setView(input)
+                .setNegativeButton("रद्द", null)
+                .setPositiveButton("Search", (d, w) -> {
+                    String query = input.getText().toString().trim();
+                    if (query.isEmpty()) return;
+
+                    Intent intent = new Intent(Intent.ACTION_VIEW,
+                            Uri.parse("https://www.google.com/search?q="
+                                    + Uri.encode(query)));
+                    try {
+                        startActivity(intent);
+                    } catch (Exception e) {
+                        toast("Browser उपलब्ध नहीं है।");
+                    }
+                }).show();
+    }
+
+    private void showSettings() {
+        setupPage("Settings");
+        addCardText("भाषा चुनें", 18);
+
+        content.addView(makeButton("हिंदी", () -> {
+            language = "hi";
+            prefs.edit().putString("language", language).apply();
+            setTtsLanguage();
+            toast("हिंदी चुनी गई।");
+        }));
+
+        content.addView(makeButton("English", () -> {
+            language = "en";
+            prefs.edit().putString("language", language).apply();
+            setTtsLanguage();
+            toast("English selected.");
+        }));
+
+        addCardText("Chat History, Notes और Planner डेटा इसी मोबाइल में सेव होते हैं।", 14);
+        addCardText("AI Backend अभी कनेक्ट नहीं है।", 14);
+        addCardText("Voice की उपलब्धता मोबाइल के Speech और TTS इंजन पर निर्भर है।", 14);
+    }
+
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(
+                    new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                    NOTIFICATION_PERMISSION_REQUEST);
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode != RESULT_OK || data == null) return;
+
+        if (requestCode == VOICE_REQUEST) {
+            ArrayList<String> results =
+                    data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+            if (results != null && !results.isEmpty()) {
+                showChat();
+                messageInput.setText(results.get(0));
+                messageInput.setSelection(messageInput.length());
+            }
+        } else if (requestCode == DOCUMENT_REQUEST) {
+            Uri uri = data.getData();
+            if (uri != null) {
+                Intent viewIntent = new Intent(Intent.ACTION_VIEW);
+                viewIntent.setDataAndType(uri, getContentResolver().getType(uri));
+                viewIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                try {
+                    startActivity(viewIntent);
+                } catch (Exception e) {
+                    toast("इस फाइल को खोलने वाला ऐप नहीं मिला।");
+                }
+            }
+        }
+    }
+
+    private void hideKeyboard() {
+        try {
+            InputMethodManager manager =
+                    (InputMethodManager) getSystemService(
+                            Context.INPUT_METHOD_SERVICE);
+            if (manager != null && getCurrentFocus() != null) {
+                manager.hideSoftInputFromWindow(
+                        getCurrentFocus().getWindowToken(), 0);
+            }
+        } catch (Exception ignored) { }
+    }
+
+    private void toast(String message) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (tts != null) {
+            tts.stop();
+            tts.shutdown();
+        }
+        super.onDestroy();
+    }
+            }
+                                    
